@@ -173,42 +173,6 @@ export async function runUninstallCommand(): Promise<void> {
     },
   ]);
 
-  // Remove IDE-specific hooks and config (best-effort, each is independent)
-  const ideCleanups: Array<{ label: string; fn: () => Promise<number> | number }> = [
-    { label: 'Gemini CLI hooks', fn: async () => {
-      const { uninstallGeminiCliHooks } = await import('../../services/integrations/GeminiCliHooksInstaller.js');
-      return uninstallGeminiCliHooks();
-    }},
-    { label: 'Windsurf hooks', fn: async () => {
-      const { uninstallWindsurfHooks } = await import('../../services/integrations/WindsurfHooksInstaller.js');
-      return uninstallWindsurfHooks();
-    }},
-    { label: 'OpenCode plugin', fn: async () => {
-      const { uninstallOpenCodePlugin } = await import('../../services/integrations/OpenCodeInstaller.js');
-      return uninstallOpenCodePlugin();
-    }},
-    { label: 'OpenClaw plugin', fn: async () => {
-      const { uninstallOpenClawPlugin } = await import('../../services/integrations/OpenClawInstaller.js');
-      return uninstallOpenClawPlugin();
-    }},
-    { label: 'Codex CLI', fn: async () => {
-      const { uninstallCodexCli } = await import('../../services/integrations/CodexCliInstaller.js');
-      return uninstallCodexCli();
-    }},
-  ];
-
-  for (const { label, fn } of ideCleanups) {
-    try {
-      const result = await fn();
-      if (result === 0) {
-        p.log.info(`${label}: removed.`);
-      }
-    } catch (error: unknown) {
-      // IDE not configured or uninstaller errored — log and continue
-      console.warn(`[uninstall] ${label} cleanup failed:`, error instanceof Error ? error.message : String(error));
-    }
-  }
-
   p.note(
     [
       `Your data directory at ${pc.cyan('~/.claude-mem')} was preserved.`,

@@ -5,7 +5,6 @@
  * Delegates to specialized modules:
  * - src/services/server/ - HTTP server, middleware, error handling
  * - src/services/infrastructure/ - Process management, health monitoring, shutdown
- * - src/services/integrations/ - IDE integrations (Cursor)
  * - src/services/worker/ - Business logic, routes, agents
  */
 
@@ -65,15 +64,6 @@ import { adoptMergedWorktrees, adoptMergedWorktreesForAllKnownRepos } from './in
 // Server imports
 import { Server } from './server/Server.js';
 
-// Integration imports
-import {
-  updateCursorContextForProject,
-  handleCursorCommand
-} from './integrations/CursorHooksInstaller.js';
-import {
-  handleGeminiCliCommand
-} from './integrations/GeminiCliHooksInstaller.js';
-
 // Service layer imports
 import { DatabaseManager } from './worker/DatabaseManager.js';
 import { SessionManager } from './worker/SessionManager.js';
@@ -88,9 +78,6 @@ import { FormattingService } from './worker/FormattingService.js';
 import { TimelineService } from './worker/TimelineService.js';
 import { SessionEventBroadcaster } from './worker/events/SessionEventBroadcaster.js';
 import { SessionCompletionHandler } from './worker/session/SessionCompletionHandler.js';
-import { DEFAULT_CONFIG_PATH, DEFAULT_STATE_PATH, expandHomePath, loadTranscriptWatchConfig, writeSampleConfig } from './transcripts/config.js';
-import { TranscriptWatcher } from './transcripts/watcher.js';
-
 // HTTP route handlers
 import { ViewerRoutes } from './worker/http/routes/ViewerRoutes.js';
 import { SessionRoutes } from './worker/http/routes/SessionRoutes.js';
@@ -161,9 +148,6 @@ export class WorkerService {
 
   // Chroma MCP manager (lazy - connects on first use)
   private chromaMcpManager: ChromaMcpManager | null = null;
-
-  // Transcript watcher for Codex and other transcript-based clients
-  private transcriptWatcher: TranscriptWatcher | null = null;
 
   // Initialization tracking
   private initializationComplete: Promise<void>;
@@ -470,8 +454,6 @@ export class WorkerService {
       this.resolveInitialization();
       logger.info('SYSTEM', 'Core initialization complete (DB + search ready)');
 
-      await this.startTranscriptWatcher(settings);
-
       // Auto-backfill Chroma for all projects if out of sync with SQLite (fire-and-forget)
       if (this.chromaMcpManager) {
         ChromaSync.backfillAllProjects().then(() => {
@@ -482,8 +464,8 @@ export class WorkerService {
       }
 
       // Mark MCP as externally ready once the bundled stdio server binary exists.
-      // Codex/Claude Desktop connect to this binary directly; the loopback client
-      // below is only a best-effort self-check and should not mark health false.
+      // The loopback client below is only a best-effort self-check and should
+      // not mark health false.
       const mcpServerPath = path.join(__dirname, 'mcp-server.cjs');
       this.mcpReady = existsSync(mcpServerPath);
 
@@ -611,57 +593,6 @@ export class WorkerService {
       logger.error('SYSTEM', 'Background initialization failed', {}, error as Error);
       throw error;
     }
-  }
-
-  /**
-   * Start transcript watcher for Codex and other transcript-based clients.
-   * This is intentionally non-fatal so Claude hooks remain usable even if
-   * transcript ingestion is misconfigured.
-   */
-  private async startTranscriptWatcher(settings: ReturnType<typeof SettingsDefaultsManager.loadFromFile>): Promise<void> {
-    const transcriptsEnabled = settings.CLAUDE_MEM_TRANSCRIPTS_ENABLED !== 'false';
-    if (!transcriptsEnabled) {
-      logger.info('TRANSCRIPT', 'Transcript watcher disabled via CLAUDE_MEM_TRANSCRIPTS_ENABLED=false');
-      return;
-    }
-
-    const configPath = settings.CLAUDE_MEM_TRANSCRIPTS_CONFIG_PATH || DEFAULT_CONFIG_PATH;
-    const resolvedConfigPath = expandHomePath(configPath);
-
-    // Ensure sample config exists (setup, outside try)
-    if (!existsSync(resolvedConfigPath)) {
-      writeSampleConfig(configPath);
-      logger.info('TRANSCRIPT', 'Created default transcript watch config', {
-        configPath: resolvedConfigPath
-      });
-    }
-
-    const transcriptConfig = loadTranscriptWatchConfig(configPath);
-    const statePath = expandHomePath(transcriptConfig.stateFile ?? DEFAULT_STATE_PATH);
-
-    try {
-      this.transcriptWatcher = new TranscriptWatcher(transcriptConfig, statePath);
-      await this.transcriptWatcher.start();
-    } catch (error) {
-      this.transcriptWatcher?.stop();
-      this.transcriptWatcher = null;
-      if (error instanceof Error) {
-        logger.error('WORKER', 'Failed to start transcript watcher (continuing without Codex ingestion)', {
-          configPath: resolvedConfigPath
-        }, error);
-      } else {
-        logger.error('WORKER', 'Failed to start transcript watcher with non-Error (continuing without Codex ingestion)', {
-          configPath: resolvedConfigPath
-        }, new Error(String(error)));
-      }
-      // [ANTI-PATTERN IGNORED]: Transcript watcher is intentionally non-fatal so Claude hooks remain usable even if transcript ingestion is misconfigured
-      return;
-    }
-    logger.info('TRANSCRIPT', 'Transcript watcher started', {
-      configPath: resolvedConfigPath,
-      statePath,
-      watches: transcriptConfig.watches.length
-    });
   }
 
   /**
@@ -1148,12 +1079,6 @@ export class WorkerService {
    * Shutdown the worker service
    */
   async shutdown(): Promise<void> {
-    if (this.transcriptWatcher) {
-      this.transcriptWatcher.stop();
-      this.transcriptWatcher = null;
-      logger.info('TRANSCRIPT', 'Transcript watcher stopped');
-    }
-
     // Stop orphan reaper before shutdown (Issue #737)
     if (this.stopOrphanReaper) {
       this.stopOrphanReaper();
@@ -1318,27 +1243,13 @@ async function main() {
       break;
     }
 
-    case 'cursor': {
-      const subcommand = process.argv[3];
-      const cursorResult = await handleCursorCommand(subcommand, process.argv.slice(4));
-      process.exit(cursorResult);
-      break;
-    }
-
-    case 'gemini-cli': {
-      const geminiSubcommand = process.argv[3];
-      const geminiResult = await handleGeminiCliCommand(geminiSubcommand, process.argv.slice(4));
-      process.exit(geminiResult);
-      break;
-    }
-
     case 'hook': {
       // Validate CLI args first (before any I/O)
       const platform = process.argv[3];
       const event = process.argv[4];
       if (!platform || !event) {
         console.error('Usage: claude-mem hook <platform> <event>');
-        console.error('Platforms: claude-code, cursor, gemini-cli, raw');
+        console.error('Platforms: claude-code, raw');
         console.error('Events: context, session-init, observation, summarize, session-complete, user-message');
         process.exit(1);
       }
