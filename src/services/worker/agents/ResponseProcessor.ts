@@ -8,14 +8,12 @@
  * - Broadcast to SSE clients
  * - Clean up processed messages
  *
- * This module extracts 150+ lines of duplicate code from SDKAgent, GeminiAgent, and OpenRouterAgent.
+ * Used by SDKAgent.
  */
 
 import { logger } from '../../../utils/logger.js';
 import { parseObservations, parseSummary, type ParsedObservation, type ParsedSummary } from '../../../sdk/parser.js';
 import { SUMMARY_MODE_MARKER, MAX_CONSECUTIVE_SUMMARY_FAILURES } from '../../../sdk/prompts.js';
-import { updateCursorContextForProject } from '../../integrations/CursorHooksInstaller.js';
-import { notifyTelegram } from '../../integrations/TelegramNotifier.js';
 import { updateFolderClaudeMdFiles } from '../../../utils/claude-md-utils.js';
 import { getWorkerPort } from '../../../shared/worker-utils.js';
 import { SettingsDefaultsManager } from '../../../shared/SettingsDefaultsManager.js';
@@ -213,13 +211,6 @@ export async function processAgentResponse(
   }
   // Clear the tracking array after confirmation
   session.processingMessageIds = [];
-
-  void notifyTelegram({
-    observations: labeledObservations,
-    observationIds: result.observationIds,
-    project: session.project,
-    memorySessionId: session.memorySessionId,
-  });
 
   // AFTER transaction commits - async operations (can fail safely without data loss)
   await syncAndBroadcastObservations(
@@ -421,10 +412,5 @@ async function syncAndBroadcastSummary(
     project: session.project,
     prompt_number: session.lastPromptNumber,
     created_at_epoch: result.createdAtEpoch
-  });
-
-  // Update Cursor context file for registered projects (fire-and-forget)
-  updateCursorContextForProject(session.project, getWorkerPort()).catch(error => {
-    logger.warn('CURSOR', 'Context update failed (non-critical)', { project: session.project }, error as Error);
   });
 }

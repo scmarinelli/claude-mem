@@ -1,5 +1,5 @@
 /**
- * Runtime command routing for `npx claude-mem start|stop|restart|status|search|transcript`.
+ * Runtime command routing for `npx claude-mem start|stop|restart|status|search`.
  *
  * These commands delegate to the installed plugin's worker-service.cjs via Bun,
  * or hit the worker's HTTP API directly (for `search`).
@@ -195,38 +195,3 @@ export async function runSearchCommand(queryParts: string[]): Promise<void> {
   }
 }
 
-/**
- * Start the transcript watcher via Bun.
- */
-export function runTranscriptWatchCommand(): void {
-  ensureInstalledOrExit();
-  const bunPath = resolveBunOrExit();
-
-  const transcriptWatcherPath = join(
-    marketplaceDirectory(),
-    'plugin',
-    'scripts',
-    'transcript-watcher.cjs',
-  );
-
-  if (!existsSync(transcriptWatcherPath)) {
-    // Fall back to worker-service with transcript subcommand
-    spawnBunWorkerCommand('transcript', ['watch']);
-    return;
-  }
-
-  const child = spawn(bunPath, [transcriptWatcherPath, 'watch'], {
-    stdio: 'inherit',
-    cwd: marketplaceDirectory(),
-    env: process.env,
-  });
-
-  child.on('error', (error) => {
-    console.error(pc.red(`Failed to start transcript watcher: ${error.message}`));
-    process.exit(1);
-  });
-
-  child.on('close', (exitCode) => {
-    process.exit(exitCode ?? 0);
-  });
-}

@@ -36,33 +36,12 @@
           "introduction",
           "installation",
           "usage/getting-started",
-          "usage/openrouter-provider",
-          "usage/gemini-provider",
           "usage/search-tools",
           "usage/knowledge-agents",
-          "usage/claude-desktop",
           "usage/private-tags",
           "usage/export-import",
           "usage/manual-recovery",
-          "usage/folder-context",
-          "beta-features",
-          "endless-mode"
-        ]
-      },
-      {
-        "group": "Cursor Integration",
-        "icon": "wand-magic-sparkles",
-        "pages": [
-          "cursor/index",
-          "cursor/gemini-setup",
-          "cursor/openrouter-setup"
-        ]
-      },
-      {
-        "group": "Gemini CLI Integration",
-        "icon": "terminal",
-        "pages": [
-          "gemini-cli/setup"
+          "usage/folder-context"
         ]
       },
       {
@@ -82,9 +61,7 @@
           "configuration",
           "modes",
           "development",
-          "troubleshooting",
-          "platform-integration",
-          "openclaw-integration"
+          "troubleshooting"
         ]
       },
       {

@@ -12,8 +12,6 @@ import { stripMemoryTagsFromJson, stripMemoryTagsFromPrompt } from '../../../../
 import { SessionManager } from '../../SessionManager.js';
 import { DatabaseManager } from '../../DatabaseManager.js';
 import { SDKAgent } from '../../SDKAgent.js';
-import { GeminiAgent, isGeminiSelected, isGeminiAvailable } from '../../GeminiAgent.js';
-import { OpenRouterAgent, isOpenRouterSelected, isOpenRouterAvailable } from '../../OpenRouterAgent.js';
 import type { WorkerService } from '../../../worker-service.js';
 import { BaseRouteHandler } from '../BaseRouteHandler.js';
 import { SessionEventBroadcaster } from '../../events/SessionEventBroadcaster.js';
@@ -35,8 +33,6 @@ export class SessionRoutes extends BaseRouteHandler {
     private sessionManager: SessionManager,
     private dbManager: DatabaseManager,
     private sdkAgent: SDKAgent,
-    private geminiAgent: GeminiAgent,
-    private openRouterAgent: OpenRouterAgent,
     private eventBroadcaster: SessionEventBroadcaster,
     private workerService: WorkerService,
     completionHandler: SessionCompletionHandler
@@ -48,51 +44,17 @@ export class SessionRoutes extends BaseRouteHandler {
     this.completionHandler = completionHandler;
   }
 
-  /**
-   * Get the appropriate agent based on settings
-   * Throws error if provider is selected but not configured (no silent fallback)
-   *
-   * Note: Session linking via contentSessionId allows provider switching mid-session.
-   * The conversationHistory on ActiveSession maintains context across providers.
-   */
-  private getActiveAgent(): SDKAgent | GeminiAgent | OpenRouterAgent {
-    if (isOpenRouterSelected()) {
-      if (isOpenRouterAvailable()) {
-        logger.debug('SESSION', 'Using OpenRouter agent');
-        return this.openRouterAgent;
-      } else {
-        throw new Error('OpenRouter provider selected but no API key configured. Set CLAUDE_MEM_OPENROUTER_API_KEY in settings or OPENROUTER_API_KEY environment variable.');
-      }
-    }
-    if (isGeminiSelected()) {
-      if (isGeminiAvailable()) {
-        logger.debug('SESSION', 'Using Gemini agent');
-        return this.geminiAgent;
-      } else {
-        throw new Error('Gemini provider selected but no API key configured. Set CLAUDE_MEM_GEMINI_API_KEY in settings or GEMINI_API_KEY environment variable.');
-      }
-    }
+  private getActiveAgent(): SDKAgent {
     return this.sdkAgent;
   }
 
-  /**
-   * Get the currently selected provider name
-   */
-  private getSelectedProvider(): 'claude' | 'gemini' | 'openrouter' {
-    if (isOpenRouterSelected() && isOpenRouterAvailable()) {
-      return 'openrouter';
-    }
-    return (isGeminiSelected() && isGeminiAvailable()) ? 'gemini' : 'claude';
+  private getSelectedProvider(): 'claude' {
+    return 'claude';
   }
 
   /**
    * Ensures agent generator is running for a session
    * Auto-starts if not already running to process pending queue
-   * Uses either Claude SDK or Gemini based on settings
-   *
-   * Provider switching: If provider setting changed while generator is running,
-   * we let the current generator finish naturally (max 5s linger timeout).
-   * The next generator will use the new provider with shared conversationHistory.
    */
   private static readonly STALE_GENERATOR_THRESHOLD_MS = 30_000; // 30 seconds (#1099)
   private static readonly MAX_SESSION_WALL_CLOCK_MS = 4 * 60 * 60 * 1000; // 4 hours (#1590)
@@ -182,7 +144,7 @@ export class SessionRoutes extends BaseRouteHandler {
    */
   private startGeneratorWithProvider(
     session: ReturnType<typeof this.sessionManager.getSession>,
-    provider: 'claude' | 'gemini' | 'openrouter',
+    provider: 'claude',
     source: string
   ): void {
     if (!session) return;
@@ -197,8 +159,8 @@ export class SessionRoutes extends BaseRouteHandler {
       session.abortController = new AbortController();
     }
 
-    const agent = provider === 'openrouter' ? this.openRouterAgent : (provider === 'gemini' ? this.geminiAgent : this.sdkAgent);
-    const agentName = provider === 'openrouter' ? 'OpenRouter' : (provider === 'gemini' ? 'Gemini' : 'Claude SDK');
+    const agent = this.sdkAgent;
+    const agentName = 'Claude SDK';
 
     // Use database count for accurate telemetry (in-memory array is always empty due to FK constraint fix)
     const pendingStore = this.sessionManager.getPendingMessageStore();

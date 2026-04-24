@@ -2,18 +2,16 @@
  * NPX CLI entry point for claude-mem.
  *
  * Usage:
- *   npx claude-mem                     → interactive install
- *   npx claude-mem install             → interactive install
- *   npx claude-mem install --ide <id>  → direct IDE setup
+ *   npx claude-mem                     → install for Claude Code
+ *   npx claude-mem install             → install for Claude Code
  *   npx claude-mem update              → update to latest version
- *   npx claude-mem uninstall           → remove plugin and IDE configs
+ *   npx claude-mem uninstall           → remove plugin
  *   npx claude-mem version             → print version
  *   npx claude-mem start               → start worker service
  *   npx claude-mem stop                → stop worker service
  *   npx claude-mem restart             → restart worker service
  *   npx claude-mem status              → show worker status
  *   npx claude-mem search <query>      → search observations
- *   npx claude-mem transcript watch    → start transcript watcher
  *
  * This file is pure Node.js — Bun is NOT required for install commands.
  * Runtime commands (`start`, `stop`, etc.) delegate to Bun via the installed plugin.
@@ -39,11 +37,10 @@ function printHelp(): void {
 ${pc.bold('claude-mem')} v${version} — persistent memory for AI coding assistants
 
 ${pc.bold('Install Commands')} (no Bun required):
-  ${pc.cyan('npx claude-mem')}                     Interactive install
-  ${pc.cyan('npx claude-mem install')}              Interactive install
-  ${pc.cyan('npx claude-mem install --ide <id>')}   Install for specific IDE
+  ${pc.cyan('npx claude-mem')}                     Install for Claude Code
+  ${pc.cyan('npx claude-mem install')}              Install for Claude Code
   ${pc.cyan('npx claude-mem update')}               Update to latest version
-  ${pc.cyan('npx claude-mem uninstall')}            Remove plugin and configs
+  ${pc.cyan('npx claude-mem uninstall')}            Remove plugin
   ${pc.cyan('npx claude-mem version')}              Print version
 
 ${pc.bold('Runtime Commands')} (requires Bun, delegates to installed plugin):
@@ -53,12 +50,6 @@ ${pc.bold('Runtime Commands')} (requires Bun, delegates to installed plugin):
   ${pc.cyan('npx claude-mem status')}               Show worker status
   ${pc.cyan('npx claude-mem search <query>')}       Search observations
   ${pc.cyan('npx claude-mem adopt [--dry-run] [--branch <name>]')}    Stamp merged worktrees into parent project
-  ${pc.cyan('npx claude-mem transcript watch')}     Start transcript watcher
-
-${pc.bold('IDE Identifiers')}:
-  claude-code, cursor, gemini-cli, opencode, openclaw,
-  windsurf, codex-cli, copilot-cli, antigravity, goose,
-  crush, roo-code, warp
 `);
 }
 
@@ -77,11 +68,8 @@ async function main(): Promise<void> {
 
     // -- Install -----------------------------------------------------------
     case 'install': {
-      const ideIndex = args.indexOf('--ide');
-      const ideValue = ideIndex !== -1 ? args[ideIndex + 1] : undefined;
-
       const { runInstallCommand } = await import('./commands/install.js');
-      await runInstallCommand({ ide: ideValue });
+      await runInstallCommand();
       break;
     }
 
@@ -150,20 +138,6 @@ async function main(): Promise<void> {
     case 'adopt': {
       const { runAdoptCommand } = await import('./commands/runtime.js');
       runAdoptCommand(args.slice(1));
-      break;
-    }
-
-    // -- Transcript --------------------------------------------------------
-    case 'transcript': {
-      const subCommand = args[1]?.toLowerCase();
-      if (subCommand === 'watch') {
-        const { runTranscriptWatchCommand } = await import('./commands/runtime.js');
-        runTranscriptWatchCommand();
-      } else {
-        console.error(pc.red(`Unknown transcript subcommand: ${subCommand ?? '(none)'}`));
-        console.error(`Usage: npx claude-mem transcript watch`);
-        process.exit(1);
-      }
       break;
     }
 

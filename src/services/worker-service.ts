@@ -5,7 +5,6 @@
  * Delegates to specialized modules:
  * - src/services/server/ - HTTP server, middleware, error handling
  * - src/services/infrastructure/ - Process management, health monitoring, shutdown
- * - src/services/integrations/ - IDE integrations (Cursor)
  * - src/services/worker/ - Business logic, routes, agents
  */
 
@@ -65,22 +64,11 @@ import { adoptMergedWorktrees, adoptMergedWorktreesForAllKnownRepos } from './in
 // Server imports
 import { Server } from './server/Server.js';
 
-// Integration imports
-import {
-  updateCursorContextForProject,
-  handleCursorCommand
-} from './integrations/CursorHooksInstaller.js';
-import {
-  handleGeminiCliCommand
-} from './integrations/GeminiCliHooksInstaller.js';
-
 // Service layer imports
 import { DatabaseManager } from './worker/DatabaseManager.js';
 import { SessionManager } from './worker/SessionManager.js';
 import { SSEBroadcaster } from './worker/SSEBroadcaster.js';
 import { SDKAgent } from './worker/SDKAgent.js';
-import { GeminiAgent, isGeminiSelected, isGeminiAvailable } from './worker/GeminiAgent.js';
-import { OpenRouterAgent, isOpenRouterSelected, isOpenRouterAvailable } from './worker/OpenRouterAgent.js';
 import { PaginationHelper } from './worker/PaginationHelper.js';
 import { SettingsManager } from './worker/SettingsManager.js';
 import { SearchManager } from './worker/SearchManager.js';
@@ -88,9 +76,6 @@ import { FormattingService } from './worker/FormattingService.js';
 import { TimelineService } from './worker/TimelineService.js';
 import { SessionEventBroadcaster } from './worker/events/SessionEventBroadcaster.js';
 import { SessionCompletionHandler } from './worker/session/SessionCompletionHandler.js';
-import { DEFAULT_CONFIG_PATH, DEFAULT_STATE_PATH, expandHomePath, loadTranscriptWatchConfig, writeSampleConfig } from './transcripts/config.js';
-import { TranscriptWatcher } from './transcripts/watcher.js';
-
 // HTTP route handlers
 import { ViewerRoutes } from './worker/http/routes/ViewerRoutes.js';
 import { SessionRoutes } from './worker/http/routes/SessionRoutes.js';
@@ -148,8 +133,6 @@ export class WorkerService {
   private sessionManager: SessionManager;
   private sseBroadcaster: SSEBroadcaster;
   private sdkAgent: SDKAgent;
-  private geminiAgent: GeminiAgent;
-  private openRouterAgent: OpenRouterAgent;
   private paginationHelper: PaginationHelper;
   private settingsManager: SettingsManager;
   private sessionEventBroadcaster: SessionEventBroadcaster;
@@ -161,9 +144,6 @@ export class WorkerService {
 
   // Chroma MCP manager (lazy - connects on first use)
   private chromaMcpManager: ChromaMcpManager | null = null;
-
-  // Transcript watcher for Codex and other transcript-based clients
-  private transcriptWatcher: TranscriptWatcher | null = null;
 
   // Initialization tracking
   private initializationComplete: Promise<void>;
@@ -194,8 +174,6 @@ export class WorkerService {
     this.sessionManager = new SessionManager(this.dbManager);
     this.sseBroadcaster = new SSEBroadcaster();
     this.sdkAgent = new SDKAgent(this.dbManager, this.sessionManager);
-    this.geminiAgent = new GeminiAgent(this.dbManager, this.sessionManager);
-    this.openRouterAgent = new OpenRouterAgent(this.dbManager, this.sessionManager);
 
     this.paginationHelper = new PaginationHelper(this.dbManager);
     this.settingsManager = new SettingsManager(this.dbManager);
@@ -228,11 +206,8 @@ export class WorkerService {
       onRestart: () => this.shutdown(),
       workerPath: __filename,
       getAiStatus: () => {
-        let provider = 'claude';
-        if (isOpenRouterSelected() && isOpenRouterAvailable()) provider = 'openrouter';
-        else if (isGeminiSelected() && isGeminiAvailable()) provider = 'gemini';
         return {
-          provider,
+          provider: 'claude',
           authMethod: getAuthMethodDescription(),
           lastInteraction: this.lastAiInteraction
             ? {
@@ -312,7 +287,7 @@ export class WorkerService {
 
     // Standard routes (registered AFTER guard middleware)
     this.server.registerRoutes(new ViewerRoutes(this.sseBroadcaster, this.dbManager, this.sessionManager));
-    this.server.registerRoutes(new SessionRoutes(this.sessionManager, this.dbManager, this.sdkAgent, this.geminiAgent, this.openRouterAgent, this.sessionEventBroadcaster, this, this.sessionCompletionHandler));
+    this.server.registerRoutes(new SessionRoutes(this.sessionManager, this.dbManager, this.sdkAgent, this.sessionEventBroadcaster, this, this.sessionCompletionHandler));
     this.server.registerRoutes(new DataRoutes(this.paginationHelper, this.dbManager, this.sessionManager, this.sseBroadcaster, this, this.startTime));
     this.server.registerRoutes(new SettingsRoutes(this.settingsManager));
     this.server.registerRoutes(new LogsRoutes());
@@ -470,8 +445,6 @@ export class WorkerService {
       this.resolveInitialization();
       logger.info('SYSTEM', 'Core initialization complete (DB + search ready)');
 
-      await this.startTranscriptWatcher(settings);
-
       // Auto-backfill Chroma for all projects if out of sync with SQLite (fire-and-forget)
       if (this.chromaMcpManager) {
         ChromaSync.backfillAllProjects().then(() => {
@@ -482,8 +455,8 @@ export class WorkerService {
       }
 
       // Mark MCP as externally ready once the bundled stdio server binary exists.
-      // Codex/Claude Desktop connect to this binary directly; the loopback client
-      // below is only a best-effort self-check and should not mark health false.
+      // The loopback client below is only a best-effort self-check and should
+      // not mark health false.
       const mcpServerPath = path.join(__dirname, 'mcp-server.cjs');
       this.mcpReady = existsSync(mcpServerPath);
 
@@ -614,74 +587,9 @@ export class WorkerService {
   }
 
   /**
-   * Start transcript watcher for Codex and other transcript-based clients.
-   * This is intentionally non-fatal so Claude hooks remain usable even if
-   * transcript ingestion is misconfigured.
-   */
-  private async startTranscriptWatcher(settings: ReturnType<typeof SettingsDefaultsManager.loadFromFile>): Promise<void> {
-    const transcriptsEnabled = settings.CLAUDE_MEM_TRANSCRIPTS_ENABLED !== 'false';
-    if (!transcriptsEnabled) {
-      logger.info('TRANSCRIPT', 'Transcript watcher disabled via CLAUDE_MEM_TRANSCRIPTS_ENABLED=false');
-      return;
-    }
-
-    const configPath = settings.CLAUDE_MEM_TRANSCRIPTS_CONFIG_PATH || DEFAULT_CONFIG_PATH;
-    const resolvedConfigPath = expandHomePath(configPath);
-
-    // Ensure sample config exists (setup, outside try)
-    if (!existsSync(resolvedConfigPath)) {
-      writeSampleConfig(configPath);
-      logger.info('TRANSCRIPT', 'Created default transcript watch config', {
-        configPath: resolvedConfigPath
-      });
-    }
-
-    const transcriptConfig = loadTranscriptWatchConfig(configPath);
-    const statePath = expandHomePath(transcriptConfig.stateFile ?? DEFAULT_STATE_PATH);
-
-    try {
-      this.transcriptWatcher = new TranscriptWatcher(transcriptConfig, statePath);
-      await this.transcriptWatcher.start();
-    } catch (error) {
-      this.transcriptWatcher?.stop();
-      this.transcriptWatcher = null;
-      if (error instanceof Error) {
-        logger.error('WORKER', 'Failed to start transcript watcher (continuing without Codex ingestion)', {
-          configPath: resolvedConfigPath
-        }, error);
-      } else {
-        logger.error('WORKER', 'Failed to start transcript watcher with non-Error (continuing without Codex ingestion)', {
-          configPath: resolvedConfigPath
-        }, new Error(String(error)));
-      }
-      // [ANTI-PATTERN IGNORED]: Transcript watcher is intentionally non-fatal so Claude hooks remain usable even if transcript ingestion is misconfigured
-      return;
-    }
-    logger.info('TRANSCRIPT', 'Transcript watcher started', {
-      configPath: resolvedConfigPath,
-      statePath,
-      watches: transcriptConfig.watches.length
-    });
-  }
-
-  /**
-   * Get the appropriate agent based on provider settings.
-   * Same logic as SessionRoutes.getActiveAgent() for consistency.
-   */
-  private getActiveAgent(): SDKAgent | GeminiAgent | OpenRouterAgent {
-    if (isOpenRouterSelected() && isOpenRouterAvailable()) {
-      return this.openRouterAgent;
-    }
-    if (isGeminiSelected() && isGeminiAvailable()) {
-      return this.geminiAgent;
-    }
-    return this.sdkAgent;
-  }
-
-  /**
    * Start a session processor
-   * On SDK resume failure (terminated session), falls back to Gemini/OpenRouter if available,
-   * otherwise marks messages abandoned and removes session so queue does not grow unbounded.
+   * On SDK resume failure (terminated session), marks messages abandoned and
+   * removes session so queue does not grow unbounded.
    */
   private startSessionProcessor(
     session: ReturnType<typeof this.sessionManager.getSession>,
@@ -690,7 +598,7 @@ export class WorkerService {
     if (!session) return;
 
     const sid = session.sessionDbId;
-    const agent = this.getActiveAgent();
+    const agent = this.sdkAgent;
     const providerName = agent.constructor.name;
 
     // Before starting generator, check if AbortController is already aborted
@@ -727,9 +635,6 @@ export class WorkerService {
           'API key expired',
           'API key not valid',
           'PERMISSION_DENIED',
-          'Gemini API error: 400',
-          'Gemini API error: 401',
-          'Gemini API error: 403',
           'FOREIGN KEY constraint failed',
         ];
         if (unrecoverablePatterns.some(pattern => errorMessage.includes(pattern))) {
@@ -911,8 +816,8 @@ export class WorkerService {
   }
 
   /**
-   * When SDK resume fails due to terminated session: try Gemini then OpenRouter to drain
-   * pending messages; if no fallback available, mark messages abandoned and remove session.
+   * When SDK resume fails due to terminated session: mark messages abandoned
+   * and remove session so the queue does not grow unbounded.
    */
   private async runFallbackForTerminatedSession(
     session: ReturnType<typeof this.sessionManager.getSession>,
@@ -921,59 +826,18 @@ export class WorkerService {
     if (!session) return;
 
     const sessionDbId = session.sessionDbId;
-
-    // Fallback agents need memorySessionId for storeObservations
-    if (!session.memorySessionId) {
-      const syntheticId = `fallback-${sessionDbId}-${Date.now()}`;
-      session.memorySessionId = syntheticId;
-      this.dbManager.getSessionStore().updateMemorySessionId(sessionDbId, syntheticId);
-    }
-
-    if (isGeminiAvailable()) {
-      try {
-        await this.geminiAgent.startSession(session, this);
-        return;
-      } catch (e) {
-        // [ANTI-PATTERN IGNORED]: Fallback chain by design — Gemini failure falls through to OpenRouter attempt
-        if (e instanceof Error) {
-          logger.warn('WORKER', 'Fallback Gemini failed, trying OpenRouter', {
-            sessionId: sessionDbId,
-          });
-          logger.error('WORKER', 'Gemini fallback error detail', { sessionId: sessionDbId }, e);
-        } else {
-          logger.error('WORKER', 'Gemini fallback failed with non-Error', { sessionId: sessionDbId }, new Error(String(e)));
-        }
-      }
-    }
-
-    if (isOpenRouterAvailable()) {
-      try {
-        await this.openRouterAgent.startSession(session, this);
-        return;
-      } catch (e) {
-        // [ANTI-PATTERN IGNORED]: Last fallback in chain — failure falls through to message abandonment, which is the designed terminal behavior
-        if (e instanceof Error) {
-          logger.error('WORKER', 'Fallback OpenRouter failed, will abandon messages', { sessionId: sessionDbId }, e);
-        } else {
-          logger.error('WORKER', 'Fallback OpenRouter failed with non-Error, will abandon messages', { sessionId: sessionDbId }, new Error(String(e)));
-        }
-      }
-    }
-
-    // No fallback or both failed: mark messages abandoned and remove session so queue doesn't grow
     const pendingStore = this.sessionManager.getPendingMessageStore();
     const abandoned = pendingStore.markAllSessionMessagesAbandoned(sessionDbId);
     if (abandoned > 0) {
-      logger.warn('SDK', 'No fallback available; marked pending messages abandoned', {
+      logger.warn('SDK', 'SDK resume failed; marked pending messages abandoned', {
         sessionId: sessionDbId,
         abandoned
       });
     }
-    // Finalize so DB status + broadcast + pending-drain are consistent on fallback failure.
-    // finalizeSession already broadcasts session_completed, so we don't also call
-    // broadcastSessionCompleted below. On finalize failure, fall back to the
-    // explicit broadcast so the UI still gets the event and leave the session
-    // in memory for the orphan reaper to retry.
+    // Finalize so DB status + broadcast + pending-drain are consistent.
+    // finalizeSession already broadcasts session_completed; on failure we fall
+    // back to the explicit broadcast so the UI still gets the event and the
+    // session stays in memory for the orphan reaper to retry.
     let finalized = false;
     try {
       this.sessionCompletionHandler.finalizeSession(sessionDbId);
@@ -1148,12 +1012,6 @@ export class WorkerService {
    * Shutdown the worker service
    */
   async shutdown(): Promise<void> {
-    if (this.transcriptWatcher) {
-      this.transcriptWatcher.stop();
-      this.transcriptWatcher = null;
-      logger.info('TRANSCRIPT', 'Transcript watcher stopped');
-    }
-
     // Stop orphan reaper before shutdown (Issue #737)
     if (this.stopOrphanReaper) {
       this.stopOrphanReaper();
@@ -1318,27 +1176,13 @@ async function main() {
       break;
     }
 
-    case 'cursor': {
-      const subcommand = process.argv[3];
-      const cursorResult = await handleCursorCommand(subcommand, process.argv.slice(4));
-      process.exit(cursorResult);
-      break;
-    }
-
-    case 'gemini-cli': {
-      const geminiSubcommand = process.argv[3];
-      const geminiResult = await handleGeminiCliCommand(geminiSubcommand, process.argv.slice(4));
-      process.exit(geminiResult);
-      break;
-    }
-
     case 'hook': {
       // Validate CLI args first (before any I/O)
       const platform = process.argv[3];
       const event = process.argv[4];
       if (!platform || !event) {
         console.error('Usage: claude-mem hook <platform> <event>');
-        console.error('Platforms: claude-code, cursor, gemini-cli, raw');
+        console.error('Platforms: claude-code, raw');
         console.error('Events: context, session-init, observation, summarize, session-complete, user-message');
         process.exit(1);
       }

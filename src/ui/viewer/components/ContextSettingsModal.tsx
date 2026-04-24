@@ -332,125 +332,22 @@ export function ContextSettingsModal({
             {/* Section 4: Advanced */}
             <CollapsibleSection
               title="Advanced"
-              description="AI provider and model selection"
+              description="Model selection and worker configuration"
               defaultOpen={false}
             >
               <FormField
-                label="AI Provider"
-                tooltip="Choose between Claude (via Agent SDK) or Gemini (via REST API)"
+                label="Claude Model"
+                tooltip="Claude model used for generating observations"
               >
                 <select
-                  value={formState.CLAUDE_MEM_PROVIDER || 'claude'}
-                  onChange={(e) => updateSetting('CLAUDE_MEM_PROVIDER', e.target.value)}
+                  value={formState.CLAUDE_MEM_MODEL || 'haiku'}
+                  onChange={(e) => updateSetting('CLAUDE_MEM_MODEL', e.target.value)}
                 >
-                  <option value="claude">Claude (uses your Claude account)</option>
-                  <option value="gemini">Gemini (uses API key)</option>
-                  <option value="openrouter">OpenRouter (multi-model)</option>
+                  <option value="haiku">haiku (fastest)</option>
+                  <option value="sonnet">sonnet (balanced)</option>
+                  <option value="opus">opus (highest quality)</option>
                 </select>
               </FormField>
-
-              {formState.CLAUDE_MEM_PROVIDER === 'claude' && (
-                <FormField
-                  label="Claude Model"
-                  tooltip="Claude model used for generating observations"
-                >
-                  <select
-                    value={formState.CLAUDE_MEM_MODEL || 'haiku'}
-                    onChange={(e) => updateSetting('CLAUDE_MEM_MODEL', e.target.value)}
-                  >
-                    <option value="haiku">haiku (fastest)</option>
-                    <option value="sonnet">sonnet (balanced)</option>
-                    <option value="opus">opus (highest quality)</option>
-                  </select>
-                </FormField>
-              )}
-
-              {formState.CLAUDE_MEM_PROVIDER === 'gemini' && (
-                <>
-                  <FormField
-                    label="Gemini API Key"
-                    tooltip="Your Google AI Studio API key (or set GEMINI_API_KEY env var)"
-                  >
-                    <input
-                      type="password"
-                      value={formState.CLAUDE_MEM_GEMINI_API_KEY || ''}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_GEMINI_API_KEY', e.target.value)}
-                      placeholder="Enter Gemini API key..."
-                    />
-                  </FormField>
-                  <FormField
-                    label="Gemini Model"
-                    tooltip="Gemini model used for generating observations"
-                  >
-                    <select
-                      value={formState.CLAUDE_MEM_GEMINI_MODEL || 'gemini-2.5-flash-lite'}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_GEMINI_MODEL', e.target.value)}
-                    >
-                      <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (10 RPM free)</option>
-                      <option value="gemini-2.5-flash">gemini-2.5-flash (5 RPM free)</option>
-                      <option value="gemini-3-flash-preview">gemini-3-flash-preview (5 RPM free)</option>
-                    </select>
-                  </FormField>
-                  <div className="toggle-group" style={{ marginTop: '8px' }}>
-                    <ToggleSwitch
-                      id="gemini-rate-limiting"
-                      label="Rate Limiting"
-                      description="Enable for free tier (10-30 RPM). Disable if you have billing set up (1000+ RPM)."
-                      checked={formState.CLAUDE_MEM_GEMINI_RATE_LIMITING_ENABLED === 'true'}
-                      onChange={(checked) => updateSetting('CLAUDE_MEM_GEMINI_RATE_LIMITING_ENABLED', checked ? 'true' : 'false')}
-                    />
-                  </div>
-                </>
-              )}
-
-              {formState.CLAUDE_MEM_PROVIDER === 'openrouter' && (
-                <>
-                  <FormField
-                    label="OpenRouter API Key"
-                    tooltip="Your OpenRouter API key from openrouter.ai (or set OPENROUTER_API_KEY env var)"
-                  >
-                    <input
-                      type="password"
-                      value={formState.CLAUDE_MEM_OPENROUTER_API_KEY || ''}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_OPENROUTER_API_KEY', e.target.value)}
-                      placeholder="Enter OpenRouter API key..."
-                    />
-                  </FormField>
-                  <FormField
-                    label="OpenRouter Model"
-                    tooltip="Model identifier from OpenRouter (e.g., anthropic/claude-3.5-sonnet, google/gemini-2.0-flash-thinking-exp)"
-                  >
-                    <input
-                      type="text"
-                      value={formState.CLAUDE_MEM_OPENROUTER_MODEL || 'xiaomi/mimo-v2-flash:free'}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_OPENROUTER_MODEL', e.target.value)}
-                      placeholder="e.g., xiaomi/mimo-v2-flash:free"
-                    />
-                  </FormField>
-                  <FormField
-                    label="Site URL (Optional)"
-                    tooltip="Your site URL for OpenRouter analytics (optional)"
-                  >
-                    <input
-                      type="text"
-                      value={formState.CLAUDE_MEM_OPENROUTER_SITE_URL || ''}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_OPENROUTER_SITE_URL', e.target.value)}
-                      placeholder="https://yoursite.com"
-                    />
-                  </FormField>
-                  <FormField
-                    label="App Name (Optional)"
-                    tooltip="Your app name for OpenRouter analytics (optional)"
-                  >
-                    <input
-                      type="text"
-                      value={formState.CLAUDE_MEM_OPENROUTER_APP_NAME || 'claude-mem'}
-                      onChange={(e) => updateSetting('CLAUDE_MEM_OPENROUTER_APP_NAME', e.target.value)}
-                      placeholder="claude-mem"
-                    />
-                  </FormField>
-                </>
-              )}
 
               <FormField
                 label="Worker Port"

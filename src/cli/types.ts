@@ -1,15 +1,14 @@
 export interface NormalizedHookInput {
   sessionId: string;
   cwd: string;
-  platform?: string;   // 'claude-code', 'cursor', 'gemini-cli', etc.
+  platform?: string;   // 'claude-code' or 'raw'
   prompt?: string;
   toolName?: string;
   toolInput?: unknown;
   toolResponse?: unknown;
   transcriptPath?: string;
-  // Cursor-specific fields
-  filePath?: string;   // afterFileEdit
-  edits?: unknown[];   // afterFileEdit
+  filePath?: string;
+  edits?: unknown[];
   // Platform-specific metadata (source, reason, trigger, mcp_context, etc.)
   metadata?: Record<string, unknown>;
   // Claude Code subagent identity — present only when hook fires inside a subagent.
