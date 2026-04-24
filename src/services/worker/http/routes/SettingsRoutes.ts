@@ -90,20 +90,6 @@ export class SettingsRoutes extends BaseRouteHandler {
       'CLAUDE_MEM_CONTEXT_OBSERVATIONS',
       'CLAUDE_MEM_WORKER_PORT',
       'CLAUDE_MEM_WORKER_HOST',
-      // AI Provider Configuration
-      'CLAUDE_MEM_PROVIDER',
-      'CLAUDE_MEM_GEMINI_API_KEY',
-      'CLAUDE_MEM_GEMINI_MODEL',
-      'CLAUDE_MEM_GEMINI_RATE_LIMITING_ENABLED',
-      'CLAUDE_MEM_GEMINI_MAX_CONTEXT_MESSAGES',
-      'CLAUDE_MEM_GEMINI_MAX_TOKENS',
-      // OpenRouter Configuration
-      'CLAUDE_MEM_OPENROUTER_API_KEY',
-      'CLAUDE_MEM_OPENROUTER_MODEL',
-      'CLAUDE_MEM_OPENROUTER_SITE_URL',
-      'CLAUDE_MEM_OPENROUTER_APP_NAME',
-      'CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES',
-      'CLAUDE_MEM_OPENROUTER_MAX_TOKENS',
       // System Configuration
       'CLAUDE_MEM_DATA_DIR',
       'CLAUDE_MEM_LOG_LEVEL',
@@ -235,38 +221,6 @@ export class SettingsRoutes extends BaseRouteHandler {
    * Validate all settings from request body (single source of truth)
    */
   private validateSettings(settings: any): { valid: boolean; error?: string } {
-    // Validate CLAUDE_MEM_PROVIDER
-    if (settings.CLAUDE_MEM_PROVIDER) {
-    const validProviders = ['claude', 'gemini', 'openrouter'];
-    if (!validProviders.includes(settings.CLAUDE_MEM_PROVIDER)) {
-      return { valid: false, error: 'CLAUDE_MEM_PROVIDER must be "claude", "gemini", or "openrouter"' };
-      }
-    }
-
-    // Validate CLAUDE_MEM_GEMINI_MODEL
-    if (settings.CLAUDE_MEM_GEMINI_MODEL) {
-      const validGeminiModels = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3-flash-preview'];
-      if (!validGeminiModels.includes(settings.CLAUDE_MEM_GEMINI_MODEL)) {
-        return { valid: false, error: 'CLAUDE_MEM_GEMINI_MODEL must be one of: gemini-2.5-flash-lite, gemini-2.5-flash, gemini-3-flash-preview' };
-      }
-    }
-
-    // Validate CLAUDE_MEM_GEMINI_MAX_CONTEXT_MESSAGES
-    if (settings.CLAUDE_MEM_GEMINI_MAX_CONTEXT_MESSAGES) {
-      const count = parseInt(settings.CLAUDE_MEM_GEMINI_MAX_CONTEXT_MESSAGES, 10);
-      if (isNaN(count) || count < 1 || count > 100) {
-        return { valid: false, error: 'CLAUDE_MEM_GEMINI_MAX_CONTEXT_MESSAGES must be between 1 and 100' };
-      }
-    }
-
-    // Validate CLAUDE_MEM_GEMINI_MAX_TOKENS
-    if (settings.CLAUDE_MEM_GEMINI_MAX_TOKENS) {
-      const tokens = parseInt(settings.CLAUDE_MEM_GEMINI_MAX_TOKENS, 10);
-      if (isNaN(tokens) || tokens < 1000 || tokens > 1000000) {
-        return { valid: false, error: 'CLAUDE_MEM_GEMINI_MAX_TOKENS must be between 1000 and 1000000' };
-      }
-    }
-
     // Validate CLAUDE_MEM_CONTEXT_OBSERVATIONS
     if (settings.CLAUDE_MEM_CONTEXT_OBSERVATIONS) {
       const obsCount = parseInt(settings.CLAUDE_MEM_CONTEXT_OBSERVATIONS, 10);
@@ -345,33 +299,6 @@ export class SettingsRoutes extends BaseRouteHandler {
     if (settings.CLAUDE_MEM_CONTEXT_FULL_FIELD) {
       if (!['narrative', 'facts'].includes(settings.CLAUDE_MEM_CONTEXT_FULL_FIELD)) {
         return { valid: false, error: 'CLAUDE_MEM_CONTEXT_FULL_FIELD must be "narrative" or "facts"' };
-      }
-    }
-
-    // Validate CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES
-    if (settings.CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES) {
-      const count = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES, 10);
-      if (isNaN(count) || count < 1 || count > 100) {
-        return { valid: false, error: 'CLAUDE_MEM_OPENROUTER_MAX_CONTEXT_MESSAGES must be between 1 and 100' };
-      }
-    }
-
-    // Validate CLAUDE_MEM_OPENROUTER_MAX_TOKENS
-    if (settings.CLAUDE_MEM_OPENROUTER_MAX_TOKENS) {
-      const tokens = parseInt(settings.CLAUDE_MEM_OPENROUTER_MAX_TOKENS, 10);
-      if (isNaN(tokens) || tokens < 1000 || tokens > 1000000) {
-        return { valid: false, error: 'CLAUDE_MEM_OPENROUTER_MAX_TOKENS must be between 1000 and 1000000' };
-      }
-    }
-
-    // Validate CLAUDE_MEM_OPENROUTER_SITE_URL if provided
-    if (settings.CLAUDE_MEM_OPENROUTER_SITE_URL) {
-      try {
-        new URL(settings.CLAUDE_MEM_OPENROUTER_SITE_URL);
-      } catch (error) {
-        // Invalid URL format
-        logger.debug('SETTINGS', 'Invalid URL format', { url: settings.CLAUDE_MEM_OPENROUTER_SITE_URL, error: error instanceof Error ? error.message : String(error) });
-        return { valid: false, error: 'CLAUDE_MEM_OPENROUTER_SITE_URL must be a valid URL' };
       }
     }
 

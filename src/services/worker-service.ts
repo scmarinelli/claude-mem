@@ -69,8 +69,6 @@ import { DatabaseManager } from './worker/DatabaseManager.js';
 import { SessionManager } from './worker/SessionManager.js';
 import { SSEBroadcaster } from './worker/SSEBroadcaster.js';
 import { SDKAgent } from './worker/SDKAgent.js';
-import { GeminiAgent, isGeminiSelected, isGeminiAvailable } from './worker/GeminiAgent.js';
-import { OpenRouterAgent, isOpenRouterSelected, isOpenRouterAvailable } from './worker/OpenRouterAgent.js';
 import { PaginationHelper } from './worker/PaginationHelper.js';
 import { SettingsManager } from './worker/SettingsManager.js';
 import { SearchManager } from './worker/SearchManager.js';
@@ -135,8 +133,6 @@ export class WorkerService {
   private sessionManager: SessionManager;
   private sseBroadcaster: SSEBroadcaster;
   private sdkAgent: SDKAgent;
-  private geminiAgent: GeminiAgent;
-  private openRouterAgent: OpenRouterAgent;
   private paginationHelper: PaginationHelper;
   private settingsManager: SettingsManager;
   private sessionEventBroadcaster: SessionEventBroadcaster;
@@ -178,8 +174,6 @@ export class WorkerService {
     this.sessionManager = new SessionManager(this.dbManager);
     this.sseBroadcaster = new SSEBroadcaster();
     this.sdkAgent = new SDKAgent(this.dbManager, this.sessionManager);
-    this.geminiAgent = new GeminiAgent(this.dbManager, this.sessionManager);
-    this.openRouterAgent = new OpenRouterAgent(this.dbManager, this.sessionManager);
 
     this.paginationHelper = new PaginationHelper(this.dbManager);
     this.settingsManager = new SettingsManager(this.dbManager);
@@ -212,11 +206,8 @@ export class WorkerService {
       onRestart: () => this.shutdown(),
       workerPath: __filename,
       getAiStatus: () => {
-        let provider = 'claude';
-        if (isOpenRouterSelected() && isOpenRouterAvailable()) provider = 'openrouter';
-        else if (isGeminiSelected() && isGeminiAvailable()) provider = 'gemini';
         return {
-          provider,
+          provider: 'claude',
           authMethod: getAuthMethodDescription(),
           lastInteraction: this.lastAiInteraction
             ? {
@@ -296,7 +287,7 @@ export class WorkerService {
 
     // Standard routes (registered AFTER guard middleware)
     this.server.registerRoutes(new ViewerRoutes(this.sseBroadcaster, this.dbManager, this.sessionManager));
-    this.server.registerRoutes(new SessionRoutes(this.sessionManager, this.dbManager, this.sdkAgent, this.geminiAgent, this.openRouterAgent, this.sessionEventBroadcaster, this, this.sessionCompletionHandler));
+    this.server.registerRoutes(new SessionRoutes(this.sessionManager, this.dbManager, this.sdkAgent, this.sessionEventBroadcaster, this, this.sessionCompletionHandler));
     this.server.registerRoutes(new DataRoutes(this.paginationHelper, this.dbManager, this.sessionManager, this.sseBroadcaster, this, this.startTime));
     this.server.registerRoutes(new SettingsRoutes(this.settingsManager));
     this.server.registerRoutes(new LogsRoutes());
@@ -596,23 +587,9 @@ export class WorkerService {
   }
 
   /**
-   * Get the appropriate agent based on provider settings.
-   * Same logic as SessionRoutes.getActiveAgent() for consistency.
-   */
-  private getActiveAgent(): SDKAgent | GeminiAgent | OpenRouterAgent {
-    if (isOpenRouterSelected() && isOpenRouterAvailable()) {
-      return this.openRouterAgent;
-    }
-    if (isGeminiSelected() && isGeminiAvailable()) {
-      return this.geminiAgent;
-    }
-    return this.sdkAgent;
-  }
-
-  /**
    * Start a session processor
-   * On SDK resume failure (terminated session), falls back to Gemini/OpenRouter if available,
-   * otherwise marks messages abandoned and removes session so queue does not grow unbounded.
+   * On SDK resume failure (terminated session), marks messages abandoned and
+   * removes session so queue does not grow unbounded.
    */
   private startSessionProcessor(
     session: ReturnType<typeof this.sessionManager.getSession>,
@@ -621,7 +598,7 @@ export class WorkerService {
     if (!session) return;
 
     const sid = session.sessionDbId;
-    const agent = this.getActiveAgent();
+    const agent = this.sdkAgent;
     const providerName = agent.constructor.name;
 
     // Before starting generator, check if AbortController is already aborted
@@ -658,9 +635,6 @@ export class WorkerService {
           'API key expired',
           'API key not valid',
           'PERMISSION_DENIED',
-          'Gemini API error: 400',
-          'Gemini API error: 401',
-          'Gemini API error: 403',
           'FOREIGN KEY constraint failed',
         ];
         if (unrecoverablePatterns.some(pattern => errorMessage.includes(pattern))) {
@@ -842,8 +816,8 @@ export class WorkerService {
   }
 
   /**
-   * When SDK resume fails due to terminated session: try Gemini then OpenRouter to drain
-   * pending messages; if no fallback available, mark messages abandoned and remove session.
+   * When SDK resume fails due to terminated session: mark messages abandoned
+   * and remove session so the queue does not grow unbounded.
    */
   private async runFallbackForTerminatedSession(
     session: ReturnType<typeof this.sessionManager.getSession>,
@@ -852,59 +826,18 @@ export class WorkerService {
     if (!session) return;
 
     const sessionDbId = session.sessionDbId;
-
-    // Fallback agents need memorySessionId for storeObservations
-    if (!session.memorySessionId) {
-      const syntheticId = `fallback-${sessionDbId}-${Date.now()}`;
-      session.memorySessionId = syntheticId;
-      this.dbManager.getSessionStore().updateMemorySessionId(sessionDbId, syntheticId);
-    }
-
-    if (isGeminiAvailable()) {
-      try {
-        await this.geminiAgent.startSession(session, this);
-        return;
-      } catch (e) {
-        // [ANTI-PATTERN IGNORED]: Fallback chain by design — Gemini failure falls through to OpenRouter attempt
-        if (e instanceof Error) {
-          logger.warn('WORKER', 'Fallback Gemini failed, trying OpenRouter', {
-            sessionId: sessionDbId,
-          });
-          logger.error('WORKER', 'Gemini fallback error detail', { sessionId: sessionDbId }, e);
-        } else {
-          logger.error('WORKER', 'Gemini fallback failed with non-Error', { sessionId: sessionDbId }, new Error(String(e)));
-        }
-      }
-    }
-
-    if (isOpenRouterAvailable()) {
-      try {
-        await this.openRouterAgent.startSession(session, this);
-        return;
-      } catch (e) {
-        // [ANTI-PATTERN IGNORED]: Last fallback in chain — failure falls through to message abandonment, which is the designed terminal behavior
-        if (e instanceof Error) {
-          logger.error('WORKER', 'Fallback OpenRouter failed, will abandon messages', { sessionId: sessionDbId }, e);
-        } else {
-          logger.error('WORKER', 'Fallback OpenRouter failed with non-Error, will abandon messages', { sessionId: sessionDbId }, new Error(String(e)));
-        }
-      }
-    }
-
-    // No fallback or both failed: mark messages abandoned and remove session so queue doesn't grow
     const pendingStore = this.sessionManager.getPendingMessageStore();
     const abandoned = pendingStore.markAllSessionMessagesAbandoned(sessionDbId);
     if (abandoned > 0) {
-      logger.warn('SDK', 'No fallback available; marked pending messages abandoned', {
+      logger.warn('SDK', 'SDK resume failed; marked pending messages abandoned', {
         sessionId: sessionDbId,
         abandoned
       });
     }
-    // Finalize so DB status + broadcast + pending-drain are consistent on fallback failure.
-    // finalizeSession already broadcasts session_completed, so we don't also call
-    // broadcastSessionCompleted below. On finalize failure, fall back to the
-    // explicit broadcast so the UI still gets the event and leave the session
-    // in memory for the orphan reaper to retry.
+    // Finalize so DB status + broadcast + pending-drain are consistent.
+    // finalizeSession already broadcasts session_completed; on failure we fall
+    // back to the explicit broadcast so the UI still gets the event and the
+    // session stays in memory for the orphan reaper to retry.
     let finalized = false;
     try {
       this.sessionCompletionHandler.finalizeSession(sessionDbId);
