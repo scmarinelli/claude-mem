@@ -10,41 +10,6 @@
   <br>
 </h1>
 
-<p align="center">
-  <a href="docs/i18n/README.zh.md">🇨🇳 中文</a> •
-  <a href="docs/i18n/README.zh-tw.md">🇹🇼 繁體中文</a> •
-  <a href="docs/i18n/README.ja.md">🇯🇵 日本語</a> •
-  <a href="docs/i18n/README.pt.md">🇵🇹 Português</a> •
-  <a href="docs/i18n/README.pt-br.md">🇧🇷 Português</a> •
-  <a href="docs/i18n/README.ko.md">🇰🇷 한국어</a> •
-  <a href="docs/i18n/README.es.md">🇪🇸 Español</a> •
-  <a href="docs/i18n/README.de.md">🇩🇪 Deutsch</a> •
-  <a href="docs/i18n/README.fr.md">🇫🇷 Français</a> •
-  <a href="docs/i18n/README.he.md">🇮🇱 עברית</a> •
-  <a href="docs/i18n/README.ar.md">🇸🇦 العربية</a> •
-  <a href="docs/i18n/README.ru.md">🇷🇺 Русский</a> •
-  <a href="docs/i18n/README.pl.md">🇵🇱 Polski</a> •
-  <a href="docs/i18n/README.cs.md">🇨🇿 Čeština</a> •
-  <a href="docs/i18n/README.nl.md">🇳🇱 Nederlands</a> •
-  <a href="docs/i18n/README.tr.md">🇹🇷 Türkçe</a> •
-  <a href="docs/i18n/README.uk.md">🇺🇦 Українська</a> •
-  <a href="docs/i18n/README.vi.md">🇻🇳 Tiếng Việt</a> •
-  <a href="docs/i18n/README.tl.md">🇵🇭 Tagalog</a> •
-  <a href="docs/i18n/README.id.md">🇮🇩 Indonesia</a> •
-  <a href="docs/i18n/README.th.md">🇹🇭 ไทย</a> •
-  <a href="docs/i18n/README.hi.md">🇮🇳 हिन्दी</a> •
-  <a href="docs/i18n/README.bn.md">🇧🇩 বাংলা</a> •
-  <a href="docs/i18n/README.ur.md">🇵🇰 اردو</a> •
-  <a href="docs/i18n/README.ro.md">🇷🇴 Română</a> •
-  <a href="docs/i18n/README.sv.md">🇸🇪 Svenska</a> •
-  <a href="docs/i18n/README.it.md">🇮🇹 Italiano</a> •
-  <a href="docs/i18n/README.el.md">🇬🇷 Ελληνικά</a> •
-  <a href="docs/i18n/README.hu.md">🇭🇺 Magyar</a> •
-  <a href="docs/i18n/README.fi.md">🇫🇮 Suomi</a> •
-  <a href="docs/i18n/README.da.md">🇩🇰 Dansk</a> •
-  <a href="docs/i18n/README.no.md">🇳🇴 Norsk</a>
-</p>
-
 <h4 align="center">Persistent memory compression system built for <a href="https://claude.com/claude-code" target="_blank">Claude Code</a>.</h4>
 
 <p align="center">
@@ -305,45 +270,21 @@ Settings are managed in `~/.claude-mem/settings.json` (auto-created with default
 
 See the **[Configuration Guide](https://docs.claude-mem.ai/configuration)** for all available settings and examples.
 
-### Mode & Language Configuration
+### Mode Configuration
 
-Claude-Mem supports multiple workflow modes and languages via the `CLAUDE_MEM_MODE` setting.
+Claude-Mem supports multiple workflow modes via the `CLAUDE_MEM_MODE` setting.
 
-This option controls both:
-- The workflow behavior (e.g. code, chill, investigation)
-- The language used in generated observations
-
-#### How to Configure
-
-Edit your settings file at `~/.claude-mem/settings.json`:
+Edit `~/.claude-mem/settings.json`:
 
 ```json
 {
-  "CLAUDE_MEM_MODE": "code--zh"
+  "CLAUDE_MEM_MODE": "code"
 }
 ```
 
-Modes are defined in `plugin/modes/`. To see all available modes locally:
+Modes are defined in `plugin/modes/`. The default is `code`. The mode loader supports a `parent--override` pattern (e.g., `code--chill`) so additional variants can be dropped into `plugin/modes/` without code changes.
 
-```bash
-ls ~/.claude/plugins/marketplaces/thedotmack/plugin/modes/
-```
-
-#### Available Modes
-
-| Mode | Description |
-|------------|-------------------------|
-| `code` | Default English mode |
-| `code--zh` | Simplified Chinese mode |
-| `code--ja` | Japanese mode |
-
-Language-specific modes follow the pattern `code--[lang]` where `[lang]` is the ISO 639-1 language code (e.g., `zh` for Chinese, `ja` for Japanese, `es` for Spanish).
-
-> Note: `code--zh` (Simplified Chinese) is already built-in — no additional installation or plugin update is required.
-
-#### After Changing Mode
-
-Restart Claude Code to apply the new mode configuration.
+Restart Claude Code after changing the mode.
 ---
 
 ## Development
