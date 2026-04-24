@@ -269,15 +269,6 @@ See the **[Troubleshooting Guide](https://docs.claude-mem.ai/troubleshooting)** 
 
 ---
 
-## Bug Reports
-
-Create comprehensive bug reports with the automated generator:
-
-```bash
-cd ~/.claude/plugins/marketplaces/thedotmack
-npm run bug-report
-```
-
 ## Contributing
 
 Contributions are welcome! Please:
